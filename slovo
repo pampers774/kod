@@ -1,0 +1,89 @@
+import sqlite3
+from datetime import datetime
+
+# === База данных ===
+DB_NAME = "diary.db"
+
+def init_db():
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS diaries (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT UNIQUE NOT NULL
+        )
+    ''')
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS entries (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            diary_id INTEGER,
+            text TEXT NOT NULL,
+            date TEXT NOT NULL,
+            FOREIGN KEY (diary_id) REFERENCES diaries (id) ON DELETE CASCADE
+        )
+    ''')
+    cursor.execute("SELECT COUNT(*) FROM diaries")
+    if cursor.fetchone()[0] == 0:
+        cursor.execute("INSERT INTO diaries (name) VALUES (?)", ("Основной",))
+    conn.commit()
+    conn.close()
+
+def get_diaries():
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    cursor.execute("SELECT name FROM diaries ORDER BY name")
+    result = [row[0] for row in cursor.fetchall()]
+    conn.close()
+    return result
+
+def add_diary(name):
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    try:
+        cursor.execute("INSERT INTO diaries (name) VALUES (?)", (name,))
+        conn.commit()
+        return True
+    except sqlite3.IntegrityError:
+        messagebox.showinfo("⚠️ Внимание", f"Дневник «{name}» уже существует.")
+        return False
+    finally:
+        conn.close()
+
+def save_entry(diary_name, text):
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    cursor.execute("SELECT id FROM diaries WHERE name = ?", (diary_name,))
+    result = cursor.fetchone()
+    if result:
+        diary_id = result[0]
+        date = datetime.now().strftime("%d.%m.%Y %H:%M")
+        cursor.execute("INSERT INTO entries (diary_id, text, date) VALUES (?, ?, ?)",
+                       (diary_id, text, date))
+        conn.commit()
+    conn.close()
+
+def load_all_entries_with_diary():
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT d.name, e.date, e.text FROM entries e
+        JOIN diaries d ON e.diary_id = d.id
+        ORDER BY e.id DESC
+    ''')
+    rows = cursor.fetchall()
+    conn.close()
+    return rows
+
+def delete_entry(entry_id):
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM entries WHERE id = ?", (entry_id,))
+    conn.commit()
+    conn.close()
+
+def delete_diary(diary_name):
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM diaries WHERE name = ?", (diary_name,))
+    conn.commit()
+    conn.close()
