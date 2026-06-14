@@ -1,3 +1,5 @@
+import tkinter as tk
+from tkinter import messagebox, simpledialog
 import sqlite3
 from datetime import datetime
 
@@ -44,7 +46,7 @@ def add_diary(name):
         conn.commit()
         return True
     except sqlite3.IntegrityError:
-        messagebox.showinfo("⚠️ Внимание", f"Дневник «{name}» уже существует.")
+        messagebox.showinfo(" Внимание", f"Дневник «{name}» уже существует.")
         return False
     finally:
         conn.close()
@@ -87,3 +89,213 @@ def delete_diary(diary_name):
     cursor.execute("DELETE FROM diaries WHERE name = ?", (diary_name,))
     conn.commit()
     conn.close()
+
+# === ЦВЕТА ТЁМНОЙ ТЕМЫ ===
+BG_MAIN = "#1e1e1e"      # Основной фон
+BG_ENTRY = "#2d2d2d"     # Фон полей
+TEXT_LIGHT = "#ffffff"   # Основной текст
+TEXT_GRAY = "#bbbbbb"    # Вспомогательный текст
+ACCENT_GREEN = "#4CAF50" # Кнопка "Сохранить"
+ACCENT_RED = "#f44336"   # Кнопка "Удалить"
+ACCENT_BLUE = "#2196F3"  # Кнопки "Просмотреть", "Новый"
+BORDER = "#3c3c3c"       # Разделители
+
+# === GUI — ТЁМНАЯ ВЕРСИЯ ===
+def main():
+    init_db()
+    root = tk.Tk()
+    root.title(" Ежедневник — Тёмная тема")
+    root.geometry("700x600")
+    root.configure(bg=BG_MAIN, padx=15, pady=15)
+
+    current_var = tk.StringVar()
+
+    def refresh_diaries():
+        menu_list = get_diaries()
+        menu = diary_menu["menu"]
+        menu.delete(0, "end")
+        for name in menu_list:
+            menu.add_command(label=name, command=lambda n=name: (
+                current_var.set(n),
+                update_display()
+            ))
+        if menu_list and (not current_var.get() or current_var.get() not in menu_list):
+            current_var.set(menu_list[0])
+        update_display()
+
+    def update_display():
+        display_area.config(state="normal")
+        display_area.delete("1.0", "end")
+        rows = load_all_entries_with_diary()
+        if not rows:
+            display_area.insert("end", "Записей пока нет.", "dim")
+        else:
+            for diary_name, date, text in rows:
+                display_area.insert("end", f" «{diary_name}» | ", "diary")
+                display_area.insert("end", f"[{date}]\n", "date")
+                display_area.insert("end", f"{text}\n\n", "text")
+        display_area.config(state="disabled")
+
+    # --- Стили текста ---
+    display_area = tk.Text(root, height=12, width=75, font=("Arial", 10),
+                           bg=BG_ENTRY, fg=TEXT_LIGHT, padx=10, pady=10,
+                           relief="flat", selectbackground=ACCENT_BLUE)
+    display_area.pack(pady=10, fill="both", expand=True)
+    display_area.config(insertbackground=TEXT_LIGHT)  # Цвет курсора
+
+    # Настройка тегов
+    display_area.tag_config("diary", foreground=ACCENT_BLUE)
+    display_area.tag_config("date", foreground=TEXT_GRAY, font=("Arial", 9, "italic"))
+    display_area.tag_config("text", foreground=TEXT_LIGHT, font=("Arial", 10))
+    display_area.tag_config("dim", foreground="#888888", font=("Arial", 10))
+
+    # --- Выбор дневника ---
+    tk.Label(root, text=" Дневник:", font=("Arial", 10, "bold"), bg=BG_MAIN, fg=TEXT_LIGHT).pack(anchor="w", pady=(0, 5))
+    diary_frame = tk.Frame(root, bg=BG_MAIN)
+    diary_frame.pack(pady=5, fill="x")
+
+    diary_menu = tk.OptionMenu(diary_frame, current_var, "")
+    diary_menu.config(bg=BG_ENTRY, fg=TEXT_LIGHT, activebackground=ACCENT_BLUE,
+                      activeforeground=TEXT_LIGHT, relief="flat", highlightthickness=1,
+                      highlightbackground=BORDER, font=("Arial", 10))
+    diary_menu["menu"].config(bg=BG_ENTRY, fg=TEXT_LIGHT, activebackground=ACCENT_BLUE, activeforeground=TEXT_LIGHT)
+    diary_menu.pack(side="left", padx=5)
+
+    tk.Button(diary_frame, text=" Обновить", bg=ACCENT_BLUE, fg="white", relief="flat",
+              font=("Arial", 9), command=refresh_diaries).pack(side="left", padx=5)
+
+    # --- Новая запись ---
+    tk.Label(root, text=" Новая запись:", font=("Arial", 10, "bold"), bg=BG_MAIN, fg=TEXT_LIGHT).pack(anchor="w", pady=(10, 5))
+    entry_text = tk.Text(root, height=4, width=75, font=("Arial", 10),
+                         bg=BG_ENTRY, fg=TEXT_LIGHT, insertbackground=TEXT_LIGHT,
+                         relief="flat", highlightbackground=BORDER, highlightthickness=1)
+    entry_text.pack(pady=5)
+
+    # --- Кнопки ---
+    btn_frame = tk.Frame(root, bg=BG_MAIN)
+    btn_frame.pack(pady=10)
+
+    def save_current():
+        text = entry_text.get("1.0", "end-1c").strip()
+        if not text:
+            messagebox.showwarning( "Введите текст!")
+            return
+        save_entry(current_var.get(), text)
+        entry_text.delete("1.0", "end")
+        update_display()
+        messagebox.showinfo( "Запись сохранена!")
+
+    tk.Button(btn_frame, text=" Сохранить", bg=ACCENT_GREEN, fg="white", relief="flat", font=("Arial", 9, "bold"),
+              command=save_current, padx=12, pady=4).pack(side="left", padx=4)
+
+    tk.Button(btn_frame, text=" Просмотреть", bg=ACCENT_BLUE, fg="white", relief="flat", font=("Arial", 9),
+              command=lambda: messagebox.showinfo(
+                  " Все записи",
+                  "\n\n".join([f" {d} | [{dt}]\n{t}" for d, dt, t in load_all_entries_with_diary()]) or "Записей нет."
+              ), padx=12, pady=4).pack(side="left", padx=4)
+
+    def new_diary():
+        name = simpledialog.askstring(" Новый дневник", "Имя:")
+        if name and name.strip():
+            name = name.strip()
+            if add_diary(name):
+                refresh_diaries()
+                current_var.set(name)
+                update_display()
+
+    tk.Button(btn_frame, text="➕ Новый", bg=ACCENT_BLUE, fg="white", relief="flat", font=("Arial", 9),
+              command=new_diary, padx=12, pady=4).pack(side="left", padx=4)
+
+    def delete_entry_action():
+        delete_window = tk.Toplevel(root)
+        delete_window.title(" Удалить запись")
+        delete_window.geometry("550x400")
+        delete_window.configure(bg=BG_MAIN)
+        delete_window.transient(root)
+        delete_window.grab_set()
+
+        tk.Label(delete_window, text="Выберите дневник:", font=("Arial", 10, "bold"), bg=BG_MAIN, fg=TEXT_LIGHT).pack(anchor="w", padx=15, pady=8)
+        diary_var = tk.StringVar()
+
+        diary_menu_del = tk.OptionMenu(delete_window, diary_var, *get_diaries())
+        diary_menu_del.config(bg=BG_ENTRY, fg=TEXT_LIGHT, relief="flat", highlightthickness=1, highlightbackground=BORDER)
+        diary_menu_del.pack(pady=5, padx=15, fill="x")
+
+        tk.Label(delete_window, text="Выберите запись:", font=("Arial", 10, "bold"), bg=BG_MAIN, fg=TEXT_LIGHT).pack(anchor="w", padx=15, pady=(10, 5))
+        entries_listbox = tk.Listbox(delete_window, height=8, bg=BG_ENTRY, fg=TEXT_LIGHT, selectbackground=ACCENT_RED, relief="flat", highlightthickness=0)
+        entries_listbox.pack(pady=5, padx=15, fill="both", expand=True)
+
+        entries_data = {}
+
+        def load_entries_for_diary():
+            entries_listbox.delete(0, tk.END)
+            entries_data.clear()
+            diary_name = diary_var.get()
+            if not diary_name:
+                return
+            conn = sqlite3.connect(DB_NAME)
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT e.id, e.date, e.text FROM entries e
+                JOIN diaries d ON e.diary_id = d.id
+                WHERE d.name = ?
+                ORDER BY e.id DESC
+            ''', (diary_name,))
+            rows = cursor.fetchall()
+            conn.close()
+            for row in rows:
+                entry_id, date, text = row
+                display_text = f"[{date}] {text[:60]}{'...' if len(text) > 60 else ''}"
+                entries_listbox.insert(tk.END, display_text)
+                entries_data[len(entries_data)] = entry_id
+
+        diary_var.trace("w", lambda *args: load_entries_for_diary())
+
+        btn_del_frame = tk.Frame(delete_window, bg=BG_MAIN)
+        btn_del_frame.pack(pady=12)
+
+        def confirm_delete():
+            selection = entries_listbox.curselection()
+            if not selection:
+                messagebox.showinfo( "Выберите запись.")
+                return
+            entry_id = entries_data[selection[0]]
+            if messagebox.askyesno("Удалить?", "Удалить эту запись?"):
+                delete_entry(entry_id)
+                load_entries_for_diary()
+                update_display()
+                messagebox.showinfo( "Запись удалена!")
+
+        tk.Button(btn_del_frame, text=" Удалить", bg=ACCENT_RED, fg="white", relief="flat", font=("Arial", 9),
+                  command=confirm_delete, padx=10).pack(side="left", padx=6)
+        tk.Button(btn_del_frame, text=" Отмена", bg="#555555", fg="white", relief="flat", font=("Arial", 9),
+                  command=delete_window.destroy, padx=10).pack(side="left", padx=6)
+
+        if get_diaries():
+            diary_var.set(get_diaries()[0])
+            load_entries_for_diary()
+
+    tk.Button(btn_frame, text=" Удалить запись", bg=ACCENT_RED, fg="white", relief="flat", font=("Arial", 9),
+              command=delete_entry_action, padx=10, pady=4).pack(side="left", padx=4)
+
+    def delete_diary_action():
+        if current_var.get() == "Основной":
+            messagebox.showwarning( "Нельзя удалить дневник «Основной».")
+            return
+        if messagebox.askyesno("Удалить дневник?", f"Удалить «{current_var.get()}» и все записи?"):
+            delete_diary(current_var.get())
+            refresh_diaries()
+            update_display()
+            messagebox.showinfo( "Дневник удалён.")
+
+    tk.Button(btn_frame, text=" Удалить дневник", bg="#c62828", fg="white", relief="flat", font=("Arial", 9),
+              command=delete_diary_action, padx=10, pady=4).pack(side="left", padx=4)
+
+    # --- Запуск ---
+    refresh_diaries()
+
+    root.mainloop()
+
+if __name__ == "__main__":
+    main()
+
